@@ -32,14 +32,69 @@ Description:  {props.get('description', 'No description available')}
 Instructions: {props.get('instruction', 'No specific instructions provided')}
 """
 
-import asyncio
+@mcp.tool()
+async def get_alerts(state: str) -> str:
+    """Get weather alerts for a US state.
+    
+    Args:
+        state: Two-letter US state code (like CA, NY, WA)
+    """
+    url = f'{NWS_API_BASE}/alerts/active/area/{state}'
+    data = await make_nws_request(url)
 
-async def main():
-    url = f"{NWS_API_BASE}/alerts/active/area/ID"
-    print(url)
-    resp = await make_nws_request(url)
-    for feature in resp['features']:
-        print(format_alert(feature))
+    if not data or 'features' not in data:
+        return 'Unable to fetch alerts or no alerts found.'
+
+    if not data['features']:
+        return 'No active alerts for this state.'
+    
+    alerts = [format_alert(feature) for feature in data['features']]
+    return '\n---\n'.join(alerts)
+
+@mcp.tool()
+async def get_forecast(latitude: float, longitude: float) -> str:
+    """Get weather forecast for a location.
+    
+    Args:
+        latitude: Latitude of the location
+        longitude: Longitude of the location
+    """
+    # start with forecast grid endpoint
+    points_url = f'{NWS_API_BASE}/points/{latitude},{longitude}'
+    points_data = await make_nws_request(points_url)
+
+    if not points_data:
+        return 'Unable to retrieve forecast data for this location.'
+
+    forecast_url = points_data['properties']['forecast']
+    forecast_data = await make_nws_request(forecast_url)
+
+    if not forecast_data:
+        return 'Unable to retrieve detailed forecast.'
+
+    periods = forecast_data['properties']['periods']
+    forecasts = []
+    for period in periods[:5]: # only show forecast for next five periods
+        forecast = f"""
+{period['name']}:
+Temperature: {period['temperature']}°{period['temperatureUnit']}
+Wind:        {period['windSpeed']} {period['windDirection']}
+Forecast:    {period['detailedForecast']}
+"""
+        forecasts.append(forecast)
+
+    return '\n---\n'.join(forecasts)
+    # return periods
+
+# import asyncio
+
+# async def main():
+#     url = f"{NWS_API_BASE}/alerts/active/area/ID"
+#     print(url)
+#     resp = await make_nws_request(url)
+#     for feature in resp['features']:
+#         print(format_alert(feature))
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    # asyncio.run(main())
+    mcp.run(transport='stdio')
